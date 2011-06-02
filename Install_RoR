@@ -1,0 +1,113 @@
+#This script is designed to allow automated installation of Ruby on Rails on a RHEL platform. It is expected that it may require tweaking depending on the project it is being used for.
+#Downloads the required packages, installs Ruby on Rails, downloads nginx & thin config files, downloads project & starts server
+#Slight modification for full automation is required: The url for downloading a mercurial rails project has been redacted
+#
+#Author: shogarth
+
+#elevate privileges & install required packages
+sudo bash
+su -
+wget http://kstst-sfs.corp.intuit.net/linux/yumInstaller.sh
+sh ./yumInstaller.sh --no-update-script --repo-server=kstst-sfs.corp.intuit.net --configure --batch
+su -
+rpm -ivh --force http://mtv-sbd-build.corp.intuit.net/yum/centos/5/KickStart/kickstart-bootstrap-1.0.0-intuit.2.noarch.rpm
+yum install -y bison curl-devel expat expat-devel libxml libxml2 libxml2-devel libxslt libxslt-devel openssl openssl-devel perl pcre pcre-devel python python-devel zlib zlib-devel
+
+#Downloads all code packages that will be compiled
+#Caution: if any do not download properly, further parts of this script will not work properly
+cd
+wget ftp://ftp.ruby-lang.org/pub/ruby/ruby-1.9.2-p180.tar.gz #ruby
+wget http://rubyforge.org/frs/download.php/74445/rubygems-1.6.2.tgz #ruby gems
+wget http://mercurial.selenic.com/release/mercurial-1.8.tar.gz #mercurial
+wget http://kernel.org/pub/software/scm/git/git-1.7.4.1.tar.bz2 #git
+wget http://sysoev.ru/nginx/nginx-0.8.54.tar.gz #nginx
+wget http://www.sqlite.org/sqlite-autoconf-3070500.tar.gz #sqlite
+
+
+#Install Ruby with zlib and openssl extensions
+tar -xzvf ruby-1.9.2-p180.tar.gz
+cd ~/ruby-1.9.2-p180
+./configure
+make
+make install
+cd ~/ruby-1.9.2-p180/ext/zlib
+/usr/local/bin/ruby extconf.rb
+make
+make install
+<reinstall ruby>
+cd ~/ruby-1.9.2-p180/ext/openssl
+/usr/local/bin/ruby extconf.rb
+make
+make install
+
+#Install Ruby Gems
+cd
+tar -xzvf rubygems-1.6.2.tgz
+cd ~/rubygems-1.6.2
+/usr/local/bin/ruby setup.rb
+
+#Use ruby gems to install Ruby on Rails
+/usr/local/bin/gem install rails
+
+#Install Mercurial
+cd
+tar -xzvf mercurial-1.8.tar.gz
+cd ~/mercurial-1.8
+make install-bin
+
+#Install Git
+cd
+tar -xjvf git-1.7.4.1.tar.bz2
+cd ~/git-1.7.4.1
+make
+make install
+
+#Install nginx
+cd
+tar -xzvf nginx-0.8.54.tar.gz
+cd ~/nginx-0.8.54
+./configure
+make
+make install
+
+#Install thin
+/usr/local/bin/gem install thin
+
+#Copies config scripts to configure nginx and thin to run a rails project
+mkdir ~/gitScripts
+cd ~/gitScripts
+git clone git://gist.github.com/860776.git
+cp -f 860776/nginx\ start\ script /etc/init.d/nginx
+chmod 744 /etc/init.d/nginx
+
+git clone git://gist.github.com/860778.git
+cp -f 860778/nginx.conf /usr/local/nginx/conf/
+
+git clone git://gist.github.com/860780.git
+mkdir /etc/thin
+cp -f 860780/thin\:\ app.yml /etc/thin/nbt.yml
+
+git clone git://gist.github.com/860781.git
+cp -f 860781/thin\ start\ script /etc/init.d/thin
+chmod 744 /etc/init.d/thin
+
+cp -f /usr/local/nginx/sbin/nginx /usr/local/sbin
+
+#Installs sqlite for rails to run development databases
+cd
+tar -xzvf sqlite-autoconf-3070500.tar.gz
+cd ~/sqlite-autoconf-3070500
+./configure
+make
+make install
+
+#Install project source
+mkdir /var/www/ && cd /var/www/
+hg clone [url_redacted] nbt
+cd nbt
+bundle install
+rake db:migrate RAILS_ENV='production'
+
+#Start Server
+/etc/init.d/thin start
+/etc/init.d/nginx start
